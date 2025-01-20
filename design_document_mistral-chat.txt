@@ -1,0 +1,254 @@
+*Technical Design Specification Document*
+1. Introduction
+The Mistral Chat App is a desktop application built using Python and the PyQt6 framework. It allows users to interact with the Mistral AI API, send and receive messages, manage chat histories, and attach files. The app is designed to be user-friendly, secure, and extensible.
+
+2. Application Architecture
+The application follows a Model-View-Controller (MVC) architecture:
+
+Model: Manages chat history and interactions with the Mistral AI API.
+
+View: Handles the user interface (UI) using PyQt6 widgets.
+
+Controller: Manages user input, updates the UI, and interacts with the model.
+
+3. Key Features
+Chat Interface:
+
+Send and receive messages.
+
+Display chat history with timestamps.
+
+Auto-scroll to the latest message.
+
+Chat Management:
+
+Create new chats.
+
+Delete existing chats.
+
+Load and save chat histories in JSON format.
+
+File Attachment:
+
+Attach .txt files (up to 1 MB).
+
+Validate file type and size.
+
+Emoji Support:
+
+Add emojis to messages via a dialog.
+
+Configuration:
+
+Set Mistral API key.
+
+Select AI model.
+
+Customize system prompt.
+
+4. Detailed Design
+4.1. Main Application Window
+The main window is implemented in the ChatApp class. It consists of:
+
+Left Pane: Displays a list of chat histories.
+
+Right Pane: Displays the chat interface and configuration options.
+
+Code Snippet: Main Window Initialization
+python
+Copy
+class ChatApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Mistral Chat App")
+        self.setGeometry(100, 100, 1200, 800)
+
+        # Central widget and layout
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+
+        # Left pane: All Chats
+        left_pane = QWidget()
+        left_layout = QVBoxLayout(left_pane)
+        left_pane.setMaximumWidth(300)
+
+        self.all_chats_list = QListWidget()
+        self.all_chats_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.load_chat_histories()
+        self.all_chats_list.itemDoubleClicked.connect(self.load_selected_chat)
+        left_layout.addWidget(self.all_chats_list)
+
+        # Right pane: Chat Display and Input
+        right_pane = QWidget()
+        right_layout = QVBoxLayout(right_pane)
+
+        # Chat Display
+        self.chat_display = QTextEdit()
+        self.chat_display.setReadOnly(True)
+        self.chat_display.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.chat_display.customContextMenuRequested.connect(self.copy_context_menu)
+        right_layout.addWidget(self.chat_display)
+
+        # User Input
+        self.input_field = QLineEdit()
+        self.input_field.setPlaceholderText("Type your message here...")
+        self.input_field.setMaxLength(32000)
+        self.input_field.returnPressed.connect(self.send_message)
+        right_layout.addWidget(self.input_field)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        self.attach_file_button = QPushButton(QIcon.fromTheme("document-open"), "Attach File")
+        self.attach_file_button.clicked.connect(self.attach_file)
+        button_layout.addWidget(self.attach_file_button)
+
+        self.send_button = QPushButton(QIcon.fromTheme("mail-send"), "Send")
+        self.send_button.clicked.connect(self.send_message)
+        button_layout.addWidget(self.send_button)
+
+        self.emoji_button = QPushButton(QIcon.fromTheme("face-smile"), "Emoji")
+        self.emoji_button.clicked.connect(self.open_emoji_dialog)
+        button_layout.addWidget(self.emoji_button)
+
+        right_layout.addLayout(button_layout)
+        main_layout.addWidget(right_pane)
+4.2. Chat Management
+Chat histories are stored as JSON files in the chats_history directory. Each file is named chat_history_<timestamp>.json.
+
+Code Snippet: Loading Chat Histories
+python
+Copy
+def load_chat_histories(self):
+    self.all_chats_list.clear()
+    chat_dir = QDir("chats_history")
+    if not chat_dir.exists():
+        chat_dir.mkpath(".")
+    chat_files = chat_dir.entryList(["chat_history_*.json"], QDir.Filter.Files)
+    chat_files.sort(reverse=True)
+    for chat_file in chat_files:
+        item = QListWidgetItem(chat_file)
+        self.all_chats_list.addItem(item)
+Code Snippet: Creating a New Chat
+python
+Copy
+def new_chat(self):
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    self.current_chat_file = os.path.join("chats_history", f"chat_history_{timestamp}.json")
+    self.chat_history = []
+    self.update_chat_display()
+    self.auto_save_chat_history()
+    self.load_chat_histories()
+    self.all_chats_list.setCurrentRow(0)
+    QMessageBox.information(self, "New Chat", "A new chat has been created.")
+4.3. Mistral AI Integration
+The app interacts with the Mistral AI API to generate responses. The API key and model are configurable via the UI.
+
+Code Snippet: Sending a Message to Mistral AI
+python
+Copy
+def get_ai_response(self, message):
+    api_key = self.api_key_combo.currentText()
+    if not api_key:
+        return "Please enter a valid API key."
+
+    model = self.model_combo.currentText()
+    system_prompt = self.system_prompt_field.text()
+
+    try:
+        client = Mistral(api_key=api_key)
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": message}
+        ]
+        chat_response = client.chat.complete(model=model, messages=messages)
+        return chat_response.choices[0].message.content
+    except Exception as e:
+        return f"Sorry, I encountered an error: {str(e)}. Please check your API key and internet connection."
+4.4. File Attachment
+Users can attach .txt files (up to 1 MB). The app validates the file type and size before processing.
+
+Code Snippet: File Attachment
+python
+Copy
+def attach_file(self):
+    options = QFileDialog.Options()
+    file_name, _ = QFileDialog.getOpenFileName(self, "Attach File", "", "Text Files (*.txt)", options=options)
+    if file_name:
+        file_size = os.path.getsize(file_name)
+        if file_size > 1024 * 1024:  # 1 MB limit
+            QMessageBox.warning(self, "Error", "File size exceeds 1 MB limit.")
+        elif file_name.endswith(".txt"):
+            with open(file_name, 'r') as file:
+                file_content = file.read()
+            self.input_field.setText(file_content)
+        else:
+            QMessageBox.warning(self, "Error", "Only .txt files are supported.")
+4.5. Emoji Support
+Users can add emojis to their messages via a dialog.
+
+Code Snippet: Emoji Dialog
+python
+Copy
+def open_emoji_dialog(self):
+    emojis = ["😊", "😢", "😄", "😍", "🤔", "😎", "😂", "😢", "😭", "👏", "👍", "👎", "❤", "💔", "🎉", "🎁", "🎈", "🔑", "🔒", "🔓"]
+    dialog = QDialog(self)
+    dialog.setWindowTitle("Select Emoji")
+    dialog_layout = QVBoxLayout(dialog)
+
+    emoji_list = QListWidget()
+    emoji_list.addItems(emojis)
+    dialog_layout.addWidget(emoji_list)
+
+    button_layout = QHBoxLayout()
+    add_button = QPushButton("Add")
+    add_button.clicked.connect(lambda: self.add_selected_emoji(emoji_list))
+    close_button = QPushButton("Close")
+    close_button.clicked.connect(dialog.close)
+    button_layout.addWidget(add_button)
+    button_layout.addWidget(close_button)
+    dialog_layout.addLayout(button_layout)
+
+    dialog.exec()
+5. Future Enhancements
+Support for Multiple File Types:
+
+Allow users to attach images, PDFs, and other file types.
+
+Chat Export:
+
+Export chat histories as PDF or text files.
+
+Multi-User Support:
+
+Add user authentication and separate chat histories for different users.
+
+Customizable Themes:
+
+Allow users to customize the app's appearance (light/dark mode).
+
+6. QA Testing
+Test Cases
+Chat Creation:
+
+Verify that a new chat is created and displayed in the chat list.
+
+Message Sending:
+
+Verify that messages are sent and displayed correctly.
+
+File Attachment:
+
+Verify that only valid .txt files (up to 1 MB) are accepted.
+
+Emoji Support:
+
+Verify that emojis are added to the input field.
+
+Error Handling:
+
+Verify that appropriate error messages are displayed for invalid inputs.
+
+7. Conclusion
+The Mistral Chat App is a robust and extensible application that provides a seamless user experience. Its modular design and clear separation of concerns make it easy to maintain and enhance in the future.
+
