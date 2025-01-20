@@ -8,3 +8,5 @@ python mistral_chat_app.py
 # For Mistral API >= 1.0
 pip install -U mistralai
 python mistral_chat_app-new.py
+
+![image](https://github.com/user-attachments/assets/9faf7b53-1ae8-4047-9568-6ea2dc3cfc20)
